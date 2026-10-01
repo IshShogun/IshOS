@@ -1,0 +1,8 @@
+
+[submodule "kernel/deps/Flanterm"]
+	path = kernel/deps/Flanterm
+	url = git@github.com:Mintsuki/Flanterm.git
+
+[submodule "kernel/deps/nanoprintf"]
+	path = kernel/deps/nanoprintf
+	url = git@github.com:charlesnicholson/nanoprintf.git

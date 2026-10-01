@@ -1,6 +1,6 @@
-# Limine C Template
+# IshOS
 
-This repository will demonstrate how to set up a basic kernel in C using Limine.
+My first 64 bit operating system.
 
 ## How to use this?
 
