@@ -1,8 +1,10 @@
 /compile_commands.json
 /.cache
-/.deps-obtained
-/freestanding-c-hdrs
-/cc-runtime
-/limine-protocol
+/deps/.deps-obtained
+/deps/freestanding-c-hdrs
+/deps/cc-runtime
+/deps/limine-protocol
+/deps/Flanterm
+/deps/nanoprintf
 /bin-*
 /obj-*

@@ -114,8 +114,11 @@ override CFLAGS += \
 override CPPFLAGS := \
     -nostdinc \
     -I src \
-    -I limine-protocol/include \
-    -isystem freestanding-c-hdrs/include \
+    -I src/libc \
+    -I deps/limine-protocol/include \
+    -I deps/Flanterm/src \
+    -I deps/nanoprintf \
+    -isystem deps/freestanding-c-hdrs/include \
     $(CPPFLAGS) \
     -MMD \
     -MP
@@ -386,7 +389,7 @@ endif
 # Use "find" to glob all *.c, *.S, and *.asm files in the tree
 # (except the src/arch/* directories, as those are gonna be added
 # in the next step).
-override SRCFILES := $(shell find -L src cc-runtime/src -type f ! -path 'src/arch/*' 2>/dev/null | LC_ALL=C sort)
+override SRCFILES := $(shell find -L src deps/cc-runtime/src deps/Flanterm/src -type f ! -path 'src/arch/*' 2>/dev/null | LC_ALL=C sort)
 # Add architecture specific files, if they exist.
 override SRCFILES += $(shell find -L src/arch/$(ARCH) -type f 2>/dev/null | LC_ALL=C sort)
 # Obtain the object and header dependencies file names.
@@ -414,7 +417,7 @@ bin-$(ARCH)/$(OUTPUT): GNUmakefile linker-scripts/$(ARCH).lds $(OBJ)
 
 # The compiler may emit calls to the memory functions and the compiler
 # runtime that LTO does not account for, so never build those with LTO.
-obj-$(ARCH)/src/memory.c.o obj-$(ARCH)/cc-runtime/src/cc-runtime.c.o: override CFLAGS += -fno-lto
+obj-$(ARCH)/src/libc/string.c.o obj-$(ARCH)/deps/cc-runtime/src/cc-runtime.c.o: override CFLAGS += -fno-lto
 
 # Compilation rules for *.c files.
 obj-$(ARCH)/%.c.o: %.c GNUmakefile
@@ -441,7 +444,7 @@ clean:
 # Remove everything built and generated including downloaded dependencies.
 .PHONY: distclean
 distclean:
-	rm -rf bin-* obj-* .deps-obtained .cache compile_commands.json freestanding-c-hdrs cc-runtime limine-protocol
+	rm -rf bin-* obj-* deps/.deps-obtained .cache compile_commands.json deps/freestanding-c-hdrs deps/cc-runtime deps/limine-protocol deps/Flanterm deps/nanoprintf
 
 # Install the final built executable to its final on-root location. Not
 # install(1), which takes other arguments on illumos and Solaris.

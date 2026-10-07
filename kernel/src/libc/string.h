@@ -1,5 +1,5 @@
-#ifndef MEMORY_H
-#define MEMORY_H
+#ifndef STRING_H
+#define STRING_H
 
 #include <stdint.h>
 #include <stddef.h>

@@ -56,6 +56,18 @@ clone_repo_commit \
     limine-protocol \
     da65184e91f80fcb397270121b1e2515a11e01ee
 
+clone_repo_commit \
+    https://github.com/Mintsuki/Flanterm.git \
+    Flanterm \
+    3e311fe2ce4f663273c22d1a229745bc53afa930 
+
+clone_repo_commit \
+    https://github.com/charlesnicholson/nanoprintf.git \
+    nanoprintf \
+    bebaecbeaf430e36a2d30d31a2fed4e098388c93 
+
+
+
 touch .deps-obtained
 
 printf "\nDependencies obtained successfully.\n"

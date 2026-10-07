@@ -2,6 +2,7 @@
 /limine-binary.tar.gz
 /edk2-ovmf-bins
 /edk2-ovmf-bins.tar.gz
+/compile_commands.json
 /iso_root
 *.iso
 *.hdd

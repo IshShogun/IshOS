@@ -45,7 +45,7 @@ endif
 override QEMU_UEFI_FLAGS := \
     -drive if=pflash,unit=0,format=raw,file=edk2-ovmf-bins/ovmf-code-$(ARCH).fd,readonly=on
 
-override IMAGE_NAME := template-$(ARCH)
+override IMAGE_NAME := IshOS-$(ARCH)
 
 # User controllable size of the HDD image, in MiB.
 HDD_SIZE := 64
@@ -132,12 +132,12 @@ limine-binary/limine: limine-binary.tar.gz
 		LDFLAGS="$(HOST_LDFLAGS)" \
 		LIBS="$(HOST_LIBS)"
 
-kernel/.deps-obtained:
-	./kernel/get-deps
+kernel/deps/.deps-obtained:
+	./kernel/deps/get-deps
 
 .PHONY: kernel
-kernel: kernel/.deps-obtained
-	$(MAKE) -C kernel
+kernel: kernel/deps/.deps-obtained
+	 bear --append -- $(MAKE) -C kernel
 
 $(IMAGE_NAME).iso: limine-binary/limine kernel
 	rm -rf iso_root
