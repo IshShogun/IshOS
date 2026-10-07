@@ -4,9 +4,11 @@
 
 tss_entry_t tss;
 
-static char df_stack[4096] __attribute__((aligned(16)));
-static char nmi_stack[4096] __attribute__((aligned(16)));
-static char mce_stack[4096] __attribute__((aligned(16)));
+#define IST_STACK_SIZE 4096
+
+static char INT_2_IST[IST_STACK_SIZE] __attribute__((aligned(16)));
+static char INT_8_IST[IST_STACK_SIZE] __attribute__((aligned(16)));
+static char INT_18_IST[IST_STACK_SIZE] __attribute__((aligned(16)));
 
 //You want one on #DF #NMI and #MCE (though I’m lazy and didn’t do it on #MCE yet )
 //need rsp0, rsp3 (why not), and ists for df, nmi and mce. 1 ist each or point to same ist?
@@ -21,10 +23,9 @@ void init_tss(int idx){
 	//set tss.rsp0 when i have scheduling as threads will need their own kernel stack and user stack - only needed on change of cpl
 	//but for now ill set df, nmi & mce
  //stack grows downards starts at high address ends at low
-	tss.ist1 = (uint64_t) df_stack + sizeof(df_stack);
-	tss.ist2 = (uint64_t) nmi_stack + sizeof(nmi_stack);
-	tss.ist3 = (uint64_t) mce_stack + sizeof(mce_stack);
-
+	tss.ist1 = (uint64_t) INT_2_IST + IST_STACK_SIZE;
+	tss.ist2 = (uint64_t) INT_8_IST + IST_STACK_SIZE;
+	tss.ist3 = (uint64_t) INT_18_IST + IST_STACK_SIZE;
 
 	//all i need for now..
 	return;
