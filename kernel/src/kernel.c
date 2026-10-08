@@ -6,6 +6,7 @@
 #include <flanterm_backends/fb.h>
 #include <flanterm.h>
 #include <descriptor_tables/gdt.h>
+#include <descriptor_tables/idt.h>
 
 
 // Set the base revision to 6, this is recommended as this is the latest
@@ -68,6 +69,9 @@ void kmain(void) {
 
 	printf("printf working\n");
 	init_gdt();
+
+	init_idt();
+	asm volatile("int3");
 
 	// We're done, just hang...
 	hcf();

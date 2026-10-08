@@ -20,7 +20,9 @@ enum gdt_descriptor_flags {
 	GDT_RW = 2U,
 
 	//system descriptor types when system is clear - sdm 3.5
-	GDT_IS_SYSTEM_TSS = 0x9
+	GDT_IS_SYSTEM_TSS = 0x9,
+	GDT_IS_SYSTEM_INT_GATE = 0x0e,
+	GDT_IS_SYSTEM_TRAP_GATE = 0x0f,
 };
 
 //in 64 bit, this is a descriptor table. describing exactly permissions for segments of memory. just no virtualisation base/limit
@@ -36,12 +38,12 @@ typedef struct gdt_entry {
 	uint8_t base_high;
 } __attribute__((packed)) gdt_entry_t; 
 
-typedef struct   gdt_pointer {
+typedef struct gdtr {
 	uint16_t limit;
 	uint64_t base;
-} __attribute__((packed)) gdt_pointer_t;
+} __attribute__((packed)) gdtr_t;
 
-gdt_entry_t gdt[GDT_SIZE];
+extern gdt_entry_t gdt[GDT_SIZE];
 
 void init_gdt();
 

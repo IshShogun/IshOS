@@ -7,7 +7,7 @@ gdt_entry_t gdt[GDT_SIZE];
 //says lgdt source operand specifies a 10 byte memory location, 8 for base, 2 for limit
 extern void gdt_flush(uint64_t ptr);
 //this is a region of memory that stores the base and the limit of the gdt. may want to be ref elsewhere. 
-gdt_pointer_t gdt_ptr;
+gdtr_t gdt_ptr;
 
 void init_gdt(){
 	for(uint8_t idx = 0; idx < GDT_SIZE; idx++){
