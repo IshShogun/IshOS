@@ -11,7 +11,7 @@ void handle_isr(interrupt_frame_t *context){
 }
 
 void default_isr(interrupt_frame_t *context){
-	printf("INT OCCURED: %i", context->interrupt_id);
+	log_debug("irq handler %i called", context->interrupt_id);
 }
 
 void init_isrs(){

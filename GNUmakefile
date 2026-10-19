@@ -85,6 +85,17 @@ run: edk2-ovmf-bins $(IMAGE_NAME).iso
 		-cdrom $(IMAGE_NAME).iso \
 		$(QEMUFLAGS)
 
+.PHONY: run-debug
+run-debug: edk2-ovmf-bins $(IMAGE_NAME).iso
+	qemu-system-$(ARCH) \
+		$(QEMU_MACHINE_FLAGS) \
+		$(QEMU_UEFI_FLAGS) \
+		-d int \
+		-cdrom $(IMAGE_NAME).iso \
+		$(QEMUFLAGS) \
+		-s \
+		-S
+
 .PHONY: run-hdd
 run-hdd: edk2-ovmf-bins $(IMAGE_NAME).hdd
 	qemu-system-$(ARCH) \

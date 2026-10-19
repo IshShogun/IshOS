@@ -1,4 +1,3 @@
-#include <stdint.h>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -7,47 +6,57 @@
 #include <flanterm.h>
 #include <descriptor_tables/gdt.h>
 #include <descriptor_tables/idt.h>
+#include <utils/limine.h>
+#include <mem/paging.h>
+#include <panic.h>
 
+void memmap_print(void) {
+    unsigned long long usable_pre = 0;
+    unsigned long long usable_post = 0;
 
-// Set the base revision to 6, this is recommended as this is the latest
-// base revision described by the Limine boot protocol specification.
-// See specification for further info.
+    printf("Limine memory map:\n");
+    printf("+-------+--------------------+--------------------+--------------------+------------------------+\n");
+    printf("| Index | Phys Start         | Phys End           | Size               | Type                   |\n");
+    printf("+-------+--------------------+--------------------+--------------------+------------------------+\n");
 
-__attribute__((used, section(".limine_requests")))
-static volatile uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(6);
+    for (unsigned long long i = 0; i < memmap_request.response->entry_count; i++) {
+        unsigned long long base   = memmap_request.response->entries[i]->base;
+        unsigned long long length = memmap_request.response->entries[i]->length;
+        unsigned long long type   = memmap_request.response->entries[i]->type;
 
-// The Limine requests can be placed anywhere, but it is important that
-// the compiler does not optimise them away, so, usually, they should
-// be made volatile or equivalent, _and_ they should be accessed at least
-// once or marked as used with the "used" attribute as done here.
+        const char *type_str;
+        switch (type) {
+            case LIMINE_MEMMAP_USABLE:
+                type_str = "Usable";
+                usable_pre  += length;
+                usable_post += length;
+                break;
+            case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
+                type_str = "Bootloader Reclaimable";
+                usable_post += length;
+                break;
+            case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
+                type_str = "ACPI Reclaimable";
+                usable_post += length;
+                break;
+            case LIMINE_MEMMAP_RESERVED:               type_str = "Reserved"; break;
+            case LIMINE_MEMMAP_ACPI_NVS:               type_str = "ACPI NVS"; break;
+            case LIMINE_MEMMAP_BAD_MEMORY:             type_str = "Bad Memory"; break;
+            case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES: type_str = "Executable and Modules"; break;
+            case LIMINE_MEMMAP_FRAMEBUFFER:            type_str = "Framebuffer"; break;
+            case LIMINE_MEMMAP_RESERVED_MAPPED:        type_str = "Reserved Mapped"; break;
+            default:                                   type_str = "Unknown"; break;
+        }
 
-__attribute__((used, section(".limine_requests")))
-static volatile struct limine_framebuffer_request framebuffer_request = {
-    .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
-    .revision = 0
-};
-
-// Finally, define the start and end markers for the Limine requests.
-// These can also be moved anywhere, to any .c file, as seen fit.
-
-__attribute__((used, section(".limine_requests_start")))
-static volatile uint64_t limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
-
-__attribute__((used, section(".limine_requests_end")))
-static volatile uint64_t limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
-
-// Halt and catch fire function.
-static void hcf(void) {
-    for (;;) {
-#if defined (__x86_64__)
-        asm ("hlt");
-#elif defined (__aarch64__) || defined (__riscv)
-        asm ("wfi");
-#elif defined (__loongarch64)
-        asm ("idle 0");
-#endif
+        printf("| %5lu | 0x%016lx | 0x%016lx | 0x%016lx | %s |\n",
+               i, base, base + length, length, type_str);
     }
+
+    printf("+-------+--------------------+--------------------+--------------------+------------------------+\n");
+    printf("Usable memory before reclaim: %lu MB\n", usable_pre  / 1024 / 1024);
+    printf("Usable memory after reclaim:  %lu MB\n", usable_post / 1024 / 1024);
 }
+
 
 // entry function
 void kmain(void) {
@@ -58,20 +67,31 @@ void kmain(void) {
 
 	// Ensure we got a framebuffer.
 	if (framebuffer_request.response == NULL
-			|| framebuffer_request.response->framebuffer_count < 1) {
+			|| framebuffer_request.response->framebuffer_count < 1
+			|| memmap_request.response == NULL
+			|| memmap_request.response->entry_count == 0
+			|| hhdm_request.response->offset == 0
+			|| executable_address_request.response == NULL) {
 		hcf();
 	}
+	
 
 	// Print the pattern to every framebuffer.
 	// TODO: handle multiple buffers, only getting one for now
 	struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
 	stdio_init(framebuffer);
 
-	printf("printf working\n");
-	init_gdt();
+	log_debug("hhdm offset: 0x%lx", hhdm_request.response->offset);
+	log_debug("executable phys base address: 0x%016lx", executable_address_request.response->physical_base);
+	log_debug("executable virt base address: 0x%016lx", executable_address_request.response->virtual_base);
+	log_debug("memmap entry count: %lu", memmap_request.response->entry_count);
 
+	init_gdt();
 	init_idt();
-	asm volatile("int3");
+
+	memmap_print();
+	// asm volatile("int3");
+	paging_init();
 
 	// We're done, just hang...
 	hcf();
