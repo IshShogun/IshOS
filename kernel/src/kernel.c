@@ -8,6 +8,7 @@
 #include <descriptor_tables/idt.h>
 #include <utils/limine.h>
 #include <mem/paging.h>
+#include <mem/alloc/buddy.h>
 #include <panic.h>
 
 void memmap_print(void) {
@@ -92,6 +93,8 @@ void kmain(void) {
 	memmap_print();
 	// asm volatile("int3");
 	paging_init();
+
+	bb_instance_init();
 
 	// We're done, just hang...
 	hcf();

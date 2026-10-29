@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdbool.h>
 
 // Halt and catch fire function.
 void hcf(void) {
@@ -16,4 +17,9 @@ void hcf(void) {
 void panic(char* msg){
 	printf("PANIC: %s\n", msg);
 	hcf();
+}
+
+void assert(bool assertation, char* err_msg){
+	if(!assertation)
+		panic(err_msg);
 }

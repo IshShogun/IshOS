@@ -10,6 +10,7 @@
 #define ALIGN_UP(x)   (((uint64_t)(x) + PAGE_SIZE - 1) & ~((uint64_t)PAGE_SIZE - 1))
 #define ALIGN_DOWN(x) ((uint64_t)(x) & ~((uint64_t)PAGE_SIZE - 1))
 #define TO_HHDM(x)    ((uint64_t)(x) + hhdm_request.response->offset)
+#define FROM_HHDM(x)  ((uint64_t)(x) - hhdm_request.response->offset)
 
 enum page_flags {
 	PAGE_PRESENT = 1U,
