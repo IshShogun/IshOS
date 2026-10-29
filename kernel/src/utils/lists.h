@@ -1,6 +1,7 @@
 #pragma once
 #include <panic.h>
 #include <stddef.h>
+#include <stdio.h>
 
 typedef struct list_head {
 	struct list_head *prev;
@@ -8,8 +9,10 @@ typedef struct list_head {
 } list_head_t;
 
 static inline void list_head_init(list_head_t *head){
-  assert(head == NULL, "Variable head is NULL.");
+  assert(head != NULL, "Variable head is not NULL.");
+	// log_debug("I BREAK AFTER HERE");
 	head->prev = head->next = head;
+	// log_debug("I BREAK BEFORE HERE");
 }
 
 static inline void list_head_validate(const list_head_t *list)

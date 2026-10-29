@@ -5,7 +5,7 @@
 #define FREE_FLAG 0x02
 
 
-#define MAX_BB_ORDER 10 //throwaway number
+#define MAX_BB_ORDER 4
 
 typedef struct bb_page {
 	uint8_t flags;

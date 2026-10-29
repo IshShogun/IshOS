@@ -16,9 +16,12 @@ bb_instance_t buddy_instance;
 
 //most of my difficulties are coming from how i dow this. 
 void ballocate_mem_for_buddy_pages(struct limine_memmap_response *memmap){
-	uint64_t bb_pages = 1 << (log2(buddy_instance.total_pages) << 1);
+	//hold on how many pages do i actually need
+	uint64_t n_pages_required = buddy_instance.total_pages * sizeof(bb_page_t) >> 12U;
+	uint64_t block_order = log2(n_pages_required) + 1;
+	uint64_t block_pages = 1 << block_order;
 
-	printf("TOTAL PAGES: %i\n\nREQUIRED BLOCK SIZE: %i\n\n", buddy_instance.total_pages, bb_pages);
+	log_debug("n_pages_required: %lu, log(n_pages_required): %lu, block order: %i, block pages: %lu", n_pages_required, log2(n_pages_required), block_order, block_pages);
 
 	//now i need to find a block of that size and store the pfn? BASE >> 12U.
 	for(int i = bump_entry; i < memmap->entry_count; i++){
@@ -32,17 +35,20 @@ void ballocate_mem_for_buddy_pages(struct limine_memmap_response *memmap){
 		uint64_t base_pfn = ALIGN_UP(entry->base + offset * PAGE_SIZE) >> 12U;
 		uint64_t end_pfn = ALIGN_DOWN(entry->base + entry->length) >> 12U;
 
-		if(bb_pages > end_pfn - base_pfn)	
+		log_debug("available pages: %i", end_pfn - base_pfn);
+
+		if(block_pages > end_pfn - base_pfn)	
 			continue;
 
 		//now i need to fit it in here. first i need to get the first 2^(binstance_order) aligned number in block
-		uint64_t remainder = base_pfn % bb_pages;
-		uint64_t nearest_aligned_pfn = base_pfn + bb_pages - remainder;
+		uint64_t remainder = base_pfn % block_pages;
+		uint64_t nearest_aligned_pfn = base_pfn + block_pages - remainder;
 
-		if(nearest_aligned_pfn + bb_pages > end_pfn)
+		if(nearest_aligned_pfn + block_pages > end_pfn)
 			continue;
 		
-		//dont need to return pfn as its derivable from ehre
+		log_debug("nearest_aligned_pfn: %i", nearest_aligned_pfn);
+		log_debug("hhdm address: 0x%016lx", TO_HHDM(nearest_aligned_pfn * PAGE_SIZE));
 		buddy_instance.base_page = (bb_page_t*) TO_HHDM(nearest_aligned_pfn * PAGE_SIZE);
 		return;
 	}
@@ -51,8 +57,25 @@ void ballocate_mem_for_buddy_pages(struct limine_memmap_response *memmap){
 }
 
 static inline uint64_t get_max_phys_addr(struct limine_memmap_response *memmap){
-	struct limine_memmap_entry *final_memmap_entry = memmap->entries[memmap->entry_count - 1];
-	return final_memmap_entry->base + final_memmap_entry->length;
+	uint64_t max_addr = 0;
+	for(int i = 0; i < memmap->entry_count; i++){
+		struct limine_memmap_entry *entry = memmap->entries[i];
+		switch (entry->type){
+			case LIMINE_MEMMAP_USABLE: break;
+			case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE: break;
+			case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES: break;
+			case LIMINE_MEMMAP_ACPI_RECLAIMABLE: break;
+			default: 
+				continue;
+		}
+		
+		uint64_t top = entry->base + entry->length;
+		if(top > max_addr)
+			max_addr = top;
+
+	}
+
+	return ALIGN_UP(max_addr);
 }
 
 
@@ -63,15 +86,35 @@ uint64_t init_bb_range(uint64_t pfn, uint64_t order, struct limine_memmap_respon
 
 	bb_page_t *page = buddy_instance.base_page + pfn;
 
-	if(pfn < bump_pfn || (pfn >= buddy_pfn && pfn < buddy_instance.total_pages)){
-		page->flags = ROOT_FLAG & ~FREE_FLAG;
+	//page table reserved
+	if(pfn < bump_pfn){
+		page->flags = 0;
 		page->order = 0;
 		return 1;
 	} 
 
+	//buddy page array reserved
+	if(buddy_pfn >= pfn && buddy_pfn <= pfn + (1 << order)){
+		for(int i = pfn; i < buddy_pfn ; i++){
+			bb_page_t *page = buddy_instance.base_page + i;
+			page->order = 0;
+			page->flags = ROOT_FLAG | FREE_FLAG;
+		}
+
+		uint64_t buddy_order = log2(buddy_instance.total_pages * sizeof(bb_page_t) >> 12U) + 1;
+		for(int i = 0; i < (1 << buddy_order); i++){
+			bb_page_t *page = buddy_instance.base_page + buddy_pfn + i;
+			page->order = 0;
+			page->flags = 0;
+		}
+		
+		return (buddy_pfn - pfn) + (1 << buddy_order);
+	}
+
+
 
 	page->order = order;
-	page->flags = ROOT_FLAG & FREE_FLAG;
+	page->flags = ROOT_FLAG | FREE_FLAG;
 	list_head_insert_after(&page->siblings, &buddy_instance.free_area[order].free_list);
 	
 	return (1 << order);
@@ -82,18 +125,23 @@ uint64_t init_bb_range(uint64_t pfn, uint64_t order, struct limine_memmap_respon
 void bb_instance_init(){
 	struct limine_memmap_response *memmap = memmap_request.response;
 	uint64_t max_phys_addr = get_max_phys_addr(memmap);
+	log_debug("MAX PHYS ADDRESS: 0x%016lx", max_phys_addr);
 
-	buddy_instance.total_pages = max_phys_addr / PAGE_SIZE;
+	buddy_instance.total_pages = max_phys_addr >> 12U;
+	log_debug("total pages avail: 0x%016lx", buddy_instance.total_pages);
 	ballocate_mem_for_buddy_pages(memmap);
+
 
 	for(int i = 0; i < MAX_BB_ORDER; i++){
 		bb_area_t *area = &buddy_instance.free_area[i];
 		list_head_init(&area->free_list);
 	}
 
+	printf("I AM HERE\n");
 	//init everything as nonroot so not useable memory/pages bounce on free
 	//explicity set root flags.
-	for(int i = 0; i < buddy_instance.total_pages; i++){
+	printf("base page: 0x%016lx\n", buddy_instance.base_page);
+	for(uint64_t i = 0; i < buddy_instance.total_pages; i++){
 		bb_page_t *page = buddy_instance.base_page + i;
 		*page = (struct bb_page){
 			.order = 0,
@@ -101,6 +149,7 @@ void bb_instance_init(){
 		};
 		list_head_init(&page->siblings);
 	}	
+	printf("I AM HERE\n");
 
 	for(uint64_t i = 0; i < memmap->entry_count; i++){
 		struct limine_memmap_entry *entry =  memmap->entries[i];
@@ -120,7 +169,6 @@ void bb_instance_init(){
 
 			pfn += frames_initaliseed;
 		}
-
 	}
 
 	log_debug("buddy initalised");
