@@ -8,7 +8,7 @@ typedef struct list_head {
 	struct list_head *next;
 } list_head_t;
 
-static inline void list_head_init(list_head_t *head){
+static inline void list_head_init(list_head_t *head, uint64_t i){
   assert(head != NULL, "Variable head is not NULL.");
 	// log_debug("I BREAK AFTER HERE");
 	head->prev = head->next = head;

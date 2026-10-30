@@ -19,7 +19,7 @@ typedef struct bb_area {
 } bb_area_t;
 
 typedef struct bb_instance {
-	bb_area_t free_area[MAX_BB_ORDER];	
+	bb_area_t free_area[MAX_BB_ORDER + 1];	
 	//or maybe bb_page_t pointer - we'll see but defo need this. 
 	bb_page_t *base_page;
 	uint64_t total_pages;
