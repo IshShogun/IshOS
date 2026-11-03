@@ -82,7 +82,6 @@ void kmain(void) {
 	struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
 	stdio_init(framebuffer);
 
-	log_debug("hhdm offset: 0x%lx", hhdm_request.response->offset);
 	log_debug("executable phys base address: 0x%016lx", executable_address_request.response->physical_base);
 	log_debug("executable virt base address: 0x%016lx", executable_address_request.response->virtual_base);
 	log_debug("memmap entry count: %lu", memmap_request.response->entry_count);
@@ -95,6 +94,9 @@ void kmain(void) {
 	paging_init();
 
 	bb_instance_init();
+	uint64_t address = bb_alloc(sizeof(uint64_t));
+	log_debug("hhdm offset: 0x%lx", hhdm_request.response->offset);
+	log_debug("got address 0x%016lx from alloc", address);
 
 	// We're done, just hang...
 	hcf();

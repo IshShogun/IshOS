@@ -110,7 +110,21 @@ uint64_t init_bb_range(uint64_t pfn, uint64_t order, struct limine_memmap_respon
 	return (1 << order);
 }
 
+uint64_t get_alignment(uint64_t number){
+	//ensures at least one flipped
+	if(number == 0)
+		return 64;
+	//find lowest bit
+	uint64_t order = 0;
+	uint64_t mask = 0x01;
 
+	while((mask & number) == 0){
+		mask = mask << 1;
+		order++;
+	}
+
+	return order;
+}
 
 void bb_instance_init(){
 	struct limine_memmap_response *memmap = memmap_request.response;
@@ -122,7 +136,7 @@ void bb_instance_init(){
 
 	for(int i = 0; i <= MAX_BB_ORDER; i++){
 		bb_area_t *area = &buddy_instance.free_area[i];
-		list_head_init(&area->free_list, 0);
+		list_head_init(&area->free_list);
 	}
 
 	//init everything as nonroot so not useable memory/pages bounce on free
@@ -133,7 +147,7 @@ void bb_instance_init(){
 			.order = 0,
 			.flags = 0,
 		};
-		list_head_init(&page->siblings, i);
+		list_head_init(&page->siblings);
 	}	
 
 	for(uint64_t i = 0; i < memmap->entry_count; i++){
@@ -146,16 +160,180 @@ void bb_instance_init(){
 
 		uint64_t pfn = base_pfn;
 		while(pfn < end_pfn){
-			uint64_t max_fit = log2(end_pfn - pfn); //biggest power of 2 block that can fit in range
-			uint64_t alignment = log2(pfn); //biggest power of 2 flipped
-			uint64_t order = min(MAX_BB_ORDER, min(max_fit, alignment)); //bigger power of 2 is lower power of 2 aligned
+			uint64_t max_fit = log2(end_pfn - pfn); 
+			uint64_t alignment = get_alignment(pfn); 			
+			uint64_t order = min(MAX_BB_ORDER, min(max_fit, alignment)); 
 			uint64_t frames_initaliseed = init_bb_range(pfn, order, memmap);
 
 			pfn += frames_initaliseed;
 		}
 	}
-	log_debug("buddy initalised");
 
+	log_debug("buddy initalised");
 }
 
-void bb_alloc(){}
+
+void map_to_free_pages(uint64_t start, uint64_t end){
+	bb_area_t *area = &buddy_instance.free_area[0];
+	uint64_t addr = start;
+	while(addr < end){
+		uint64_t pfn = addr >> 12U;
+		bb_page_t *page = buddy_instance.base_page + pfn;
+		page->order = 0;
+		page->flags = ROOT_FLAG | FREE_FLAG;
+		list_head_insert_after(&page->siblings, &area->free_list);
+		
+		addr += PAGE_SIZE;
+	}
+}
+
+
+bb_page_t *get_page_struct_from_list_head(list_head_t *entry)
+{
+    return list_entry(entry, bb_page_t, siblings);
+}
+
+
+//best as a macro i think
+static inline uint64_t get_phys_addr_from_page_struct(bb_page_t *page){
+	return ((uint64_t) page - (uint64_t) buddy_instance.base_page) * PAGE_SIZE / sizeof(bb_page_t);
+}
+
+uint64_t bb_block_decompose(uint64_t current_order, uint64_t target_order, bb_area_t *area){
+	if(area->n_free == 0)
+		return 0;
+
+	//find nearest aligned block with target_order in block
+	uint64_t counter = 0;
+	bb_page_t *page = get_page_struct_from_list_head(area->free_list.next);
+	while(counter < area->n_free){
+		uint64_t base = get_phys_addr_from_page_struct(page);
+		uint64_t end = base + (1 << current_order) * PAGE_SIZE;
+
+		uint64_t remainder = base % (1 << target_order) * PAGE_SIZE;
+		uint64_t aligned = base + (1 << target_order) * PAGE_SIZE - remainder;
+
+		if(aligned + (1 << target_order) * PAGE_SIZE > end){
+			page = get_page_struct_from_list_head(page->siblings.next);	
+			counter++;
+			continue;
+		}
+
+		page = (bb_page_t*) TO_HHDM(aligned);
+		page->order = target_order;
+		page->flags = ROOT_FLAG | FREE_FLAG;
+		list_head_insert_after(&page->siblings, &buddy_instance.free_area[target_order].free_list);
+		map_to_free_pages(base, aligned);
+		map_to_free_pages(aligned + (1 << target_order) * PAGE_SIZE, end);
+		
+		return aligned;
+	}
+
+	return 0;
+}
+
+
+uint64_t bb_block_compose(uint64_t current_order, uint64_t target_order, bb_area_t *area){
+	uint64_t required_blocks = 1 << (target_order - current_order);
+	if(required_blocks > area->n_free)
+		return 0;
+
+	//set base and end -> needed for block. base is target aligned
+	list_head_t *entry = &area->free_list;
+	uint64_t end, aligned, n_blocks = 0;
+	uint64_t base = get_phys_addr_from_page_struct(get_page_struct_from_list_head(entry->next));
+
+	//find contingous range of blocks that fit target order
+	while(list_head_empty(entry->next) && n_blocks < required_blocks){
+		entry = entry->next;
+		bb_page_t *page = get_page_struct_from_list_head(entry);
+		if(n_blocks == 0){
+			uint64_t remainder = base % (1 << target_order);
+			aligned = base + (1 << target_order) - remainder;
+		} 
+
+		uint64_t next = aligned * n_blocks * (1 << current_order) * PAGE_SIZE;
+		end = get_phys_addr_from_page_struct(page) + (1 << current_order) * PAGE_SIZE;
+
+		if(next >= end){
+			base = get_phys_addr_from_page_struct(get_page_struct_from_list_head(entry->next));
+			n_blocks = 0;
+			continue;
+		}
+
+		n_blocks++;
+	}
+
+	if(n_blocks < required_blocks){
+		log_debug("not able to compose blocks for order: %i, from order: %i", target_order, current_order);
+		return 0;
+	}
+
+
+	bb_page_t *page = buddy_instance.base_page + (base >> 12U);
+	//TODO: defo need a list_head empty check here - a whole loop most likely
+	for(int i = 0; i < required_blocks; i++){
+		list_head_t *entry = &page->siblings;
+		list_head_remove(entry);
+		page = get_page_struct_from_list_head(entry->next);
+		page->flags = 0;
+	}
+
+	int pfn = aligned >> 12U;
+	bb_page_t *aligned_page = buddy_instance.base_page + pfn;
+	aligned_page->order = target_order;
+	aligned_page->flags = ~FREE_FLAG | ROOT_FLAG;
+	list_head_insert_after(&aligned_page->siblings, &buddy_instance.free_area[target_order].free_list);
+	map_to_free_pages(base, aligned);
+	map_to_free_pages(aligned + (1 << target_order) * PAGE_SIZE, end);
+	return aligned;
+}
+
+uint64_t bb_alloc(uint64_t size){
+	//this is the log in terms of page frames
+	uint64_t order = log2(size >> 12U);
+	log_debug("order: %i", order);
+	if(order > MAX_BB_ORDER)
+		panic("memory request too big");
+
+	log_debug("order: %i", order);
+	bb_area_t *area = &buddy_instance.free_area[order];
+	//more readable and checks for list_head null bugs too.
+	uint64_t alloc_address = 0;
+	if(list_head_empty(&area->free_list)){
+		for(int i = MAX_BB_ORDER; i >= 0; i--){
+			bb_area_t *area = &buddy_instance.free_area[i];
+			if(list_head_empty(&area->free_list))
+				continue;
+			
+			if(i > order){
+				alloc_address = bb_block_compose(i, order, area);
+			}	else {
+				alloc_address = bb_block_decompose(i, order, area);
+			}
+
+			log_debug("alloc_address: 0x%016lx", alloc_address);
+			if(alloc_address != 0)
+				return TO_HHDM(alloc_address);
+
+		}
+	}
+
+	list_head_remove(area->free_list.next);
+	alloc_address = get_phys_addr_from_page_struct(get_page_struct_from_list_head(area->free_list.next));
+	log_debug("alloc_address: 0x%016lx", alloc_address);
+	return TO_HHDM(alloc_address);
+}
+
+void bb_free(uint64_t address){
+	bb_page_t *page = buddy_instance.base_page + (address >> 12U);	
+
+	//cant free non root page or already free page
+	//so we bounce when page is non_root or already free
+	if(page->flags & FREE_FLAG == 1  || page->flags & ROOT_FLAG == 0){
+		panic("freeing non-freeable address - either non root page or already free");
+	}
+
+	page->flags = FREE_FLAG | ROOT_FLAG;
+	list_head_insert_after(&page->siblings, &buddy_instance.free_area[page->order].free_list);
+}
