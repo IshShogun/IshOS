@@ -97,6 +97,7 @@ void kmain(void) {
 	uint64_t address = bb_alloc(sizeof(uint64_t));
 	log_debug("hhdm offset: 0x%lx", hhdm_request.response->offset);
 	log_debug("got address 0x%016lx from alloc", address);
+	bb_free(address);
 
 	// We're done, just hang...
 	hcf();

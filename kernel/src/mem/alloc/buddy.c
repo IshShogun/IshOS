@@ -294,7 +294,7 @@ uint64_t bb_alloc(uint64_t size){
 	uint64_t order = log2(size >> 12U);
 	log_debug("order: %i", order);
 	if(order > MAX_BB_ORDER)
-		panic("memory request too big");
+		order = MAX_BB_ORDER;
 
 	log_debug("order: %i", order);
 	bb_area_t *area = &buddy_instance.free_area[order];
@@ -317,6 +317,8 @@ uint64_t bb_alloc(uint64_t size){
 				return TO_HHDM(alloc_address);
 
 		}
+
+		panic("not enough memory");
 	}
 
 	list_head_remove(area->free_list.next);
@@ -326,11 +328,11 @@ uint64_t bb_alloc(uint64_t size){
 }
 
 void bb_free(uint64_t address){
-	bb_page_t *page = buddy_instance.base_page + (address >> 12U);	
+	bb_page_t *page = buddy_instance.base_page + (FROM_HHDM(address) >> 12U);	
 
 	//cant free non root page or already free page
 	//so we bounce when page is non_root or already free
-	if(page->flags & FREE_FLAG == 1  || page->flags & ROOT_FLAG == 0){
+	if((page->flags & FREE_FLAG) == 1  || (page->flags & ROOT_FLAG) == 0){
 		panic("freeing non-freeable address - either non root page or already free");
 	}
 

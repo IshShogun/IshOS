@@ -28,5 +28,6 @@ typedef struct bb_instance {
 
  
 void bb_instance_init();
-uint64_t bb_alloc();
+uint64_t bb_alloc(uint64_t size);
+void bb_free(uint64_t address);
 
