@@ -1,30 +1,13 @@
 #include <stdint.h>
 #include <utils/lists.h>
 #include <mem/paging.h>
-
-#define MAX_CACHE_ORDER 8
-#define ORDER_OF_HALF_PAGE_SIZE 0
-
-typedef struct kmem_cache {
-	list_head_t slabs_partial;
-	list_head_t slabs_full;
-	list_head_t slabs_free;
-	uint64_t objsize;
-} kmem_cache_t;
-
-typedef struct slab {
-	list_head_t siblings;
-	void* s_mem;	
-	uint64_t in_use;
-	//i can use a freelist because this is a size cache not a type cache
-	list_head_t freelist;	
-} slab_t;
-
-
-uint64_t bb_alloc(uint64_t size);
+#include <mem/pfndb.h>
+#include <mem/alloc/buddy.h>
+#include <mem/alloc/slab.h>
 
 extern uint64_t HHDM_OFFSET;
 kmem_cache_t* size_caches[MAX_CACHE_ORDER];
+
 
 void slab_init(){
 	for(int i = 0; i < MAX_CACHE_ORDER; i++){
@@ -37,6 +20,11 @@ void slab_init(){
 		//add pages to slabs_free - but how many?
 		for(int j = 0; j < 10; j++){
 			slab_t *slab = (slab_t*)bb_alloc(PAGE_SIZE);
+
+			page_t *page = pfndb.base_page + (FROM_HHDM(slab) >> 12U);
+			page->flags = page->flags | SLAB_FLAG;
+			page->slab_cache = cache;
+
 			list_head_init(&slab->siblings);
 			list_head_init(&slab->freelist);
 			slab->s_mem = (void*) ((char*)slab + sizeof(slab_t));
@@ -54,10 +42,16 @@ void slab_init(){
 	}
 }
 
+
 uint64_t kmem_cache_alloc(kmem_cache_t* cache){
 	if(list_head_empty(&cache->slabs_partial)){
 		if(list_head_empty(&cache->slabs_free)){
 			slab_t *slab = (slab_t*)bb_alloc(PAGE_SIZE);
+
+			page_t *page = pfndb.base_page + (FROM_HHDM(slab) >> 12U);
+			page->flags = page->flags | SLAB_FLAG;
+			page->slab_cache = cache;
+
 			list_head_init(&slab->siblings);
 			list_head_init(&slab->freelist);
 			slab->s_mem = (void*) ((char*)slab + sizeof(slab_t));
@@ -96,6 +90,16 @@ uint64_t kmem_cache_alloc(kmem_cache_t* cache){
 	}
 
 	return addr;
+}
+
+//is vaddr part of a slab or part of the buddy alloc	
+void kfree(uint64_t vaddr){
+	page_t *page = pfndb.base_page + (FROM_HHDM(vaddr) >> 12U);
+	if(page->flags & SLAB_FLAG){
+		return;
+	}
+
+	bb_free(vaddr);
 }
 
 void* kmalloc(uint64_t size){

@@ -1,3 +1,4 @@
+#pragma once
 #include <limine.h>
 #include <utils/limine.h>
 
